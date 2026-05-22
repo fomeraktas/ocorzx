@@ -375,8 +375,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
       <div class="stat-card"><div class="stat-label">Ср. время</div><div class="stat-val" id="hs-avg" style="font-size:20px;">—</div></div>
       <div class="stat-card"><div class="stat-label">Рекорд</div><div class="stat-val ok" id="hs-best" style="font-size:20px;">—</div></div>
     </div>
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-      <div></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div style="font-size:13px;color:var(--text2);font-weight:600;">Период:</div>
+        <input type="date" class="inp inp-sm" id="hist-from" style="width:150px;" onchange="renderHistory()">
+        <span style="color:var(--text2)">—</span>
+        <input type="date" class="inp inp-sm" id="hist-to" style="width:150px;" onchange="renderHistory()">
+        <button class="btn btn-sm" onclick="clearHistFilter()">✕ Сбросить</button>
+      </div>
       <div style="display:flex;gap:10px;">
         <button class="btn btn-ok btn-sm" onclick="exportHistory()">📥 Скачать Excel</button>
         <button class="btn btn-danger btn-sm" onclick="confirmClearHistory()">🗑️ Очистить</button>
@@ -647,16 +653,9 @@ async function loadFromCloud() {
 
 let ordersRowId = null;
 async function saveOrders() {
-  // First load latest from cloud, merge, then save
-  const rows = await sbFetch('orders?select=*&limit=1');
+  const rows = await sbFetch('orders?select=id&limit=1');
   if(rows && rows.length) {
     ordersRowId = rows[0].id;
-    // Merge cloud orders with local orders (don't lose cloud data)
-    const cloudOrders = rows[0].data || [];
-    cloudOrders.forEach(co => {
-      const local = orders.find(o => o.num === co.num);
-      if(!local) orders.push(co); // add cloud order if not in local
-    });
     await sbFetch(`orders?id=eq.${ordersRowId}`, 'PATCH', {data: orders, active_idx: activeIdx, updated_at: new Date().toISOString()});
   } else {
     const res = await sbFetch('orders', 'POST', {data: orders, active_idx: activeIdx});
@@ -893,9 +892,13 @@ function processBarcode() {
     saveOrders();
     if(o.items.every(i=>i.scanned)){
       const elapsed=pickStartTime?Math.round((Date.now()-pickStartTime)/1000):0;
+      const cmpNum = o.num;
+      const cmpTotal = o.items.length;
       addHistory(o.num,o.items,elapsed);
+      activeIdx = null;
+      saveOrders();
       setTimeout(()=>{
-        document.getElementById('cmp-desc').textContent=`Заказ №${o.num} — все ${o.items.length} шт. упакованы · ${fmtTime(elapsed)}`;
+        document.getElementById('cmp-desc').textContent=`Заказ №${cmpNum} — все ${cmpTotal} шт. упакованы · ${fmtTime(elapsed)}`;
         setState('complete');renderOrdersList();
       },700);
     } else {
@@ -952,18 +955,39 @@ async function addHistory(num, items, secs) {
   await saveHistoryEntry(entry);
 }
 
+function clearHistFilter() {
+  document.getElementById('hist-from').value = '';
+  document.getElementById('hist-to').value = '';
+  renderHistory();
+}
+
 function renderHistory() {
-  const el=document.getElementById('hist-list'),stats=document.getElementById('hist-stats');
-  if(!history.length){el.innerHTML='<div class="empty-st"><span class="empty-icon">🕐</span><p>Собранные заказы появятся здесь</p></div>';stats.style.display='none';return;}
+  const el=document.getElementById('hist-list'), stats=document.getElementById('hist-stats');
+  
+  // Date filter
+  const fromVal = document.getElementById('hist-from')?.value;
+  const toVal = document.getElementById('hist-to')?.value;
+  const fromTs = fromVal ? new Date(fromVal).setHours(0,0,0,0) : null;
+  const toTs = toVal ? new Date(toVal).setHours(23,59,59,999) : null;
+  
+  let filtered = history;
+  if(fromTs) filtered = filtered.filter(h => h.ts >= fromTs);
+  if(toTs)   filtered = filtered.filter(h => h.ts <= toTs);
+
+  if(!filtered.length){
+    el.innerHTML='<div class="empty-st"><span class="empty-icon">🕐</span><p>Нет данных за выбранный период</p></div>';
+    stats.style.display='none';
+    return;
+  }
   stats.style.display='grid';
-  const totalItems=history.reduce((s,h)=>s+h.totalItems,0);
-  const avgSecs=Math.round(history.reduce((s,h)=>s+h.secs,0)/history.length);
-  const bestSecs=Math.min(...history.map(h=>h.secs));
-  document.getElementById('hs-cnt').textContent=history.length;
+  const totalItems=filtered.reduce((s,h)=>s+h.totalItems,0);
+  const avgSecs=Math.round(filtered.reduce((s,h)=>s+h.secs,0)/filtered.length);
+  const bestSecs=Math.min(...filtered.map(h=>h.secs));
+  document.getElementById('hs-cnt').textContent=filtered.length;
   document.getElementById('hs-items').textContent=totalItems;
   document.getElementById('hs-avg').textContent=fmtTime(avgSecs);
   document.getElementById('hs-best').textContent=fmtTime(bestSecs);
-  el.innerHTML=`<table class="hist-table"><thead><tr><th>Сотрудник</th><th>Заказ</th><th>Товаров</th><th>Время</th><th>Дата</th></tr></thead><tbody>${history.map(h=>`<tr><td><span class="badge badge-acc">👤 ${h.user||'—'}</span></td><td><strong style="font-family:'JetBrains Mono',monospace">№ ${h.num}</strong></td><td>${h.totalItems} шт.</td><td><span class="time-chip">⏱ ${fmtTime(h.secs)}</span></td><td style="color:var(--text2)">${fmtDate(h.ts)}</td></tr>`).join('')}</tbody></table>`;
+  el.innerHTML=`<table class="hist-table"><thead><tr><th>Сотрудник</th><th>Заказ</th><th>Товаров</th><th>Время</th><th>Дата</th></tr></thead><tbody>${filtered.map(h=>`<tr><td><span class="badge badge-acc">👤 ${h.user||'—'}</span></td><td><strong style="font-family:'JetBrains Mono',monospace">№ ${h.num}</strong></td><td>${h.totalItems} шт.</td><td><span class="time-chip">⏱ ${fmtTime(h.secs)}</span></td><td style="color:var(--text2)">${fmtDate(h.ts)}</td></tr>`).join('')}</tbody></table>`;
 }
 
 function renderDashboard() {
@@ -1057,6 +1081,16 @@ function renderDashboard() {
 
 function exportHistory() {
   if(!history.length){alert('История пуста');return;}
+  // Apply same date filter as view
+  const fromVal = document.getElementById('hist-from')?.value;
+  const toVal = document.getElementById('hist-to')?.value;
+  const fromTs = fromVal ? new Date(fromVal).setHours(0,0,0,0) : null;
+  const toTs = toVal ? new Date(toVal).setHours(23,59,59,999) : null;
+  let exportData = history;
+  if(fromTs) exportData = exportData.filter(h => h.ts >= fromTs);
+  if(toTs)   exportData = exportData.filter(h => h.ts <= toTs);
+  if(!exportData.length){alert('Нет данных за выбранный период');return;}
+  history = exportData; // temporarily use filtered for export
   const wb = XLSX.utils.book_new();
 
   // ── SHEET 1: Сводка ──
@@ -1134,6 +1168,7 @@ function exportHistory() {
   XLSX.utils.book_append_sheet(wb, ws3, 'Итого по товарам');
 
   const dateStr = new Date().toISOString().slice(0,10);
+  history = history; // restore
   XLSX.writeFile(wb, `отчет_сборка_${dateStr}.xlsx`);
 }
 
