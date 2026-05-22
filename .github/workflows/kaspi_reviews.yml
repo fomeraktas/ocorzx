@@ -1,0 +1,24 @@
+name: Kaspi Reviews Bot
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check-reviews:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Python kurulum
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Kütüphaneleri yükle
+        run: pip install requests
+      - name: Kötü yorumları kontrol et
+        env:
+          KASPI_TOKEN: ${{ secrets.KASPI_TOKEN }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+        run: python kaspi_reviews.py
