@@ -343,6 +343,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Manrop
           <div class="cmp-icon-wrap">✅</div>
           <div class="cmp-h">Заказ собран!</div>
           <div class="cmp-p" id="cmp-desc"></div>
+          <div style="font-size:18px;color:var(--text2);margin-bottom:20px;">Переход через <span id="cmp-countdown" style="color:var(--ok);font-weight:700;font-size:24px;">5</span> сек...</div>
           <button class="btn btn-primary btn-lg" onclick="goNextWaybill()">🔖 Сканировать следующую накладную</button>
         </div>
       </div>
@@ -900,6 +901,7 @@ function processBarcode() {
       setTimeout(()=>{
         document.getElementById('cmp-desc').textContent=`Заказ №${cmpNum} — все ${cmpTotal} шт. упакованы · ${fmtTime(elapsed)}`;
         setState('complete');renderOrdersList();
+        startCompleteCountdown();
       },700);
     } else {
       setTimeout(()=>{inp.className='inp';banner.className='banner';inp.value='';inp.focus();},1200);
@@ -912,7 +914,30 @@ function processBarcode() {
   }
 }
 
-function goNextWaybill(){activeIdx=null;activePkgNum=0;saveOrders();setState('waybill');}
+let countdownTimer = null;
+
+function startCompleteCountdown() {
+  let secs = 5;
+  const el = document.getElementById('cmp-countdown');
+  if(countdownTimer) clearInterval(countdownTimer);
+  countdownTimer = setInterval(()=>{
+    secs--;
+    if(el) el.textContent = secs;
+    if(secs <= 0) {
+      clearInterval(countdownTimer);
+      countdownTimer = null;
+      goNextWaybill();
+    }
+  }, 1000);
+}
+
+function goNextWaybill(){
+  if(countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+  activeIdx=null;
+  activePkgNum=0;
+  saveOrders();
+  setState('waybill');
+}
 
 // ═══════════════════════════════════════════════
 //  ORDERS LIST
