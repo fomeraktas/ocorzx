@@ -646,7 +646,7 @@ async function loadFromCloud() {
     });
   }
   // Load history
-  const histRows = await sbFetch('history?select=*&order=ts.desc&limit=200');
+  const histRows = await sbFetch('history?select=*&order=ts.desc&limit=10000');
   if(histRows) {
     history = histRows.map(r => ({
       num: r.order_num,
@@ -740,7 +740,7 @@ function startAutoSync() {
       }
     }
     // Sync history
-    const histRows = await sbFetch('history?select=*&order=ts.desc&limit=200');
+    const histRows = await sbFetch('history?select=*&order=ts.desc&limit=10000');
     if(histRows) {
       history = histRows.map(r => ({
         num: r.order_num, totalItems: r.total_items, secs: r.secs,
